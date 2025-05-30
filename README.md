@@ -111,13 +111,13 @@ Any modern compiler will happily inline the function call so it becomes a jmp in
 
 So the runtime overhead is exactly the same as a function pointer invocation.
 
-# IDE Auto-Complete
+### IDE Auto-Complete
 
 While it varies by IDE (apparently JetBrains' CLion has better support), many IDEs or LSP-based text editors have trouble with auto-completing arguments for function pointers.
 
 Since `bdgl` emits a real function and not a macro'd alias, any IDE that supports auto-complete will show a useful function definition.
 
-# Efficient Extension Parsing/Handling
+### Efficient Extension Parsing/Handling
 
 One of the functions OpenGL loaders perform is extension parsing/loading.
 
