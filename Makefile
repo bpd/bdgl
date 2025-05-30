@@ -15,4 +15,4 @@ run: loader
 	./dist/bdgl-loader
 
 gen:
-	java paraser/GLParser.java
+	java parser/GLParser.java

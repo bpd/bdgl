@@ -745,211 +745,213 @@ public class GLStaxParser {
         return apiVersions;
     }
 
-    public static void generateType(Type type, StringBuilder buffer) {
-        if (type.cst) {
-            buffer.append("const ");
-        }
-        buffer.append(type.name);
-        if (type.pointer) {
-            buffer.append('*');
-        }
-        if (type.pointerToPointer) {
-            buffer.append('*');
-        }
-    }
-
-    static void generateCommand(Command command, String fpName, int commandIndex, StringBuilder buffer) {
-        boolean isVoid = command.proto.ret.name.equals("void")
-            && !command.proto.ret.pointer;
-
-        if (isVoid) {
-            buffer.append("bdgl_defv(").append(command.proto.name);
-        } else {
-            buffer.append("bdgl_def(").append(command.proto.name).append(',');
-            generateType(command.proto.ret, buffer);
-        }
-        buffer.append(',');
-
-        // sig
-        buffer.append('(');
-        for (int i=0; i<command.params.size(); i++) {
-            if (i > 0) {
-                buffer.append(',');
+    public static class CGen {
+        public static void generateType(Type type, StringBuilder buffer) {
+            if (type.cst) {
+                buffer.append("const ");
             }
-            Param param = command.params.get(i);
-            generateType(param.type, buffer);
-            buffer.append(' ').append(param.name);
-        }
-        buffer.append(')');
-        buffer.append(',');
-        buffer.append(fpName);
-        buffer.append(',').append(commandIndex).append(',');
-
-        // call
-        buffer.append('(');
-        for (int i=0; i<command.params.size(); i++) {
-            if (i > 0) {
-                buffer.append(',');
+            buffer.append(type.name);
+            if (type.pointer) {
+                buffer.append('*');
             }
-            Param param = command.params.get(i);
-            buffer.append(param.name);
-        }
-        buffer.append(')');
-
-        buffer.append(')');
-        buffer.append('\n');
-    }
-
-    public static void generateCHeader(Registry registry, ApiVersion version, StringBuilder buffer) {
-
-        if (version == null) {
-            throw new IllegalArgumentException("version null");
+            if (type.pointerToPointer) {
+                buffer.append('*');
+            }
         }
 
-        if (version.previous != null) {
-            // generate previous versions before we emit this one
-            generateCHeader(registry, version.previous, buffer);
-        } else {
-            // oldest version, so we're at the top of the output
-            registry.types.forEach((glTypeName, typeName) -> {
+        static void generateCommand(Command command, String fpName, int commandIndex, StringBuilder buffer) {
+            boolean isVoid = command.proto.ret.name.equals("void")
+                && !command.proto.ret.pointer;
 
-                if (glTypeName != null) {
-                    buffer.append("typedef ").append(typeName).append(" ").append(glTypeName).append(";\n");
-                } else {
-                    // TODO log unknown type
+            if (isVoid) {
+                buffer.append("bdgl_defv(").append(command.proto.name);
+            } else {
+                buffer.append("bdgl_def(").append(command.proto.name).append(',');
+                generateType(command.proto.ret, buffer);
+            }
+            buffer.append(',');
+
+            // sig
+            buffer.append('(');
+            for (int i=0; i<command.params.size(); i++) {
+                if (i > 0) {
+                    buffer.append(',');
                 }
-            });
+                Param param = command.params.get(i);
+                generateType(param.type, buffer);
+                buffer.append(' ').append(param.name);
+            }
+            buffer.append(')');
+            buffer.append(',');
+            buffer.append(fpName);
+            buffer.append(',').append(commandIndex).append(',');
+
+            // call
+            buffer.append('(');
+            for (int i=0; i<command.params.size(); i++) {
+                if (i > 0) {
+                    buffer.append(',');
+                }
+                Param param = command.params.get(i);
+                buffer.append(param.name);
+            }
+            buffer.append(')');
+
+            buffer.append(')');
+            buffer.append('\n');
         }
 
-        buffer.append("\n//").append(version.feature.name).append('\n');
+        public static void generateVersion(Registry registry, ApiVersion version, StringBuilder buffer) {
 
-        // enums
-        for (String enumName : version.profile.enums) {
-            String enumValue = registry.enums.get(enumName);
-            buffer.append("#define ").append(enumName).append(" ").append(enumValue).append('\n');
-        }
+            if (version == null) {
+                throw new IllegalArgumentException("version null");
+            }
 
-        // need a deterministic/indexable command list
-        List<String> commandNames = new ArrayList<>();
-        version.profile.commands.forEach(cmdName -> commandNames.add(cmdName));
-        commandNames.sort(String.CASE_INSENSITIVE_ORDER);
+            if (version.previous != null) {
+                // generate previous versions before we emit this one
+                generateVersion(registry, version.previous, buffer);
+            } else {
+                // oldest version, so we're at the top of the output
+                registry.types.forEach((glTypeName, typeName) -> {
 
-        // declare per-version function pointer table
-        buffer.append("\n#ifdef BDGL_IMPL\n");
-        buffer.append("void* (*bdgl_fp_").append(version.feature.name).append("[").append(version.profile.commands.size()).append("])();\n");
+                    if (glTypeName != null) {
+                        buffer.append("typedef ").append(typeName).append(" ").append(glTypeName).append(";\n");
+                    } else {
+                        // TODO log unknown type
+                    }
+                });
+            }
 
-        buffer.append("bdgl_Version bdgl_").append(version.feature.name).append(" = {\n");
-        buffer.append("  .major = ").append(version.feature.numberMajor).append(",\n");
-        buffer.append("  .minor = ").append(version.feature.numberMinor).append(",\n");
-        buffer.append("  .loaded = 0,\n");
-        buffer.append("  .names = ");
-        for (String commandName : commandNames) {
-            // e.g. "glGetString\0"
-            buffer.append('\n').append('"').append(commandName).append("\\0\"");
-        }
-        buffer.append(",\n .funcs = (void**)bdgl_fp_").append(version.feature.name).append(",\n");
-        buffer.append("};\n");
+            buffer.append("\n//").append(version.feature.name).append('\n');
 
-        buffer.append("#else\n");
-        buffer.append("extern bdgl_Version bdgl_").append(version.feature.name).append(";\n");
-        buffer.append("#endif\n");
-
-        // example:
-        // #define bdgl_glClear(f) void f(GLbitfield mask)
-        for (int commandIndex=0; commandIndex<commandNames.size(); commandIndex++) {
-            String commandName = commandNames.get(commandIndex);
-            Command command = registry.commands.get(commandName);
-
-            generateCommand(command, version.feature.name, commandIndex, buffer);
-        }
-    }
-
-    public static void generateCHeaderImpl(Registry registry, ApiVersion version, List<ApiExtension> extensions, StringBuilder buffer) throws Exception {
-
-        // prefix
-        buffer.append( Files.readString(new File("src/bdgl_prefix.h").toPath()) );
-
-        generateCHeader(registry, version, buffer);
-
-        // TODO better type parsing -- a lot of extensions reference custom types
-        //      parse <name> child tag from <type> parent
-        //      then just conver the whole element to text to get the typedef
-        //
-
-        for (var apiExt : extensions) {
-
-            buffer.append("\n//").append(apiExt.name).append('\n');
-
-            for (String enumName : apiExt.requires.enums) {
+            // enums
+            for (String enumName : version.profile.enums) {
                 String enumValue = registry.enums.get(enumName);
                 buffer.append("#define ").append(enumName).append(" ").append(enumValue).append('\n');
             }
 
             // need a deterministic/indexable command list
             List<String> commandNames = new ArrayList<>();
-            apiExt.requires.commands.forEach(cmdName -> commandNames.add(cmdName));
+            version.profile.commands.forEach(cmdName -> commandNames.add(cmdName));
             commandNames.sort(String.CASE_INSENSITIVE_ORDER);
 
+            // declare per-version function pointer table
             buffer.append("\n#ifdef BDGL_IMPL\n");
+            buffer.append("void* (*bdgl_fp_").append(version.feature.name).append("[").append(version.profile.commands.size()).append("])();\n");
 
-            // declare per-extension function pointer table
-            int commandCount = apiExt.requires.commands.size();
-            if (commandCount > 0) {
-                // only write the FP table if we have commands
-                // (if not, we'll use a null pointer below)
-                buffer.append("void* (*bdgl_fp_").append(apiExt.name).append("[").append(commandCount).append("])();\n");
-            }
-
-            buffer.append("bdgl_Extension bdgl_").append(apiExt.name).append(" = {\n");
+            buffer.append("bdgl_Version bdgl_").append(version.feature.name).append(" = {\n");
+            buffer.append("  .major = ").append(version.feature.numberMajor).append(",\n");
+            buffer.append("  .minor = ").append(version.feature.numberMinor).append(",\n");
             buffer.append("  .loaded = 0,\n");
             buffer.append("  .names = ");
-            if (commandCount > 0) {
-                for (String commandName : commandNames) {
-                    // e.g. "glGetString\0"
-                    buffer.append('\n').append('"').append(commandName).append("\\0\"");
-                }
-                buffer.append(",\n  .funcs = (void**)bdgl_fp_").append(apiExt.name).append(",\n");
-            } else {
-                // if we don't have any commands, we need an empty 'names' string
-                // and a null pointer to the function pointers array
-                buffer.append("\"\"");
-                buffer.append(",\n  .funcs = 0,\n");
+            for (String commandName : commandNames) {
+                // e.g. "glGetString\0"
+                buffer.append('\n').append('"').append(commandName).append("\\0\"");
             }
+            buffer.append(",\n .funcs = (void**)bdgl_fp_").append(version.feature.name).append(",\n");
             buffer.append("};\n");
 
             buffer.append("#else\n");
-            buffer.append("extern bdgl_Extension bdgl_").append(apiExt.name).append(";\n");
+            buffer.append("extern bdgl_Version bdgl_").append(version.feature.name).append(";\n");
             buffer.append("#endif\n");
 
+            // example:
+            // #define bdgl_glClear(f) void f(GLbitfield mask)
             for (int commandIndex=0; commandIndex<commandNames.size(); commandIndex++) {
                 String commandName = commandNames.get(commandIndex);
-
                 Command command = registry.commands.get(commandName);
-                if (command == null) {
-                    throw new IllegalStateException("Extension '"+apiExt.name+"' reference non-existent command: " + commandName);
-                }
 
-                generateCommand(command, apiExt.name, commandIndex, buffer);
+                generateCommand(command, version.feature.name, commandIndex, buffer);
             }
         }
 
-        buffer.append( Files.readString(new File("src/bdgl_suffix.h").toPath()) );
+        public static void generateHeader(Registry registry, ApiVersion version, List<ApiExtension> extensions, StringBuilder buffer) throws Exception {
 
-        buffer.append("#ifdef BDGL_IMPL\n");
-        buffer.append("int bdgl_load_all(bdgl_loadproc loadproc) {\n");
-        buffer.append("  return 0 \n");
+            // prefix
+            buffer.append( Files.readString(new File("src/bdgl_prefix.h").toPath()) );
 
-        ApiVersion versionRef = version;
-        while (versionRef != null) {
+            generateVersion(registry, version, buffer);
 
-            buffer.append("    + bdgl_load_version(&bdgl_").append(versionRef.feature.name)
-                .append(",loadproc)\n");
+            // TODO better type parsing -- a lot of extensions reference custom types
+            //      parse <name> child tag from <type> parent
+            //      then just conver the whole element to text to get the typedef
+            //
 
-            versionRef = versionRef.previous;
+            for (var apiExt : extensions) {
+
+                buffer.append("\n//").append(apiExt.name).append('\n');
+
+                for (String enumName : apiExt.requires.enums) {
+                    String enumValue = registry.enums.get(enumName);
+                    buffer.append("#define ").append(enumName).append(" ").append(enumValue).append('\n');
+                }
+
+                // need a deterministic/indexable command list
+                List<String> commandNames = new ArrayList<>();
+                apiExt.requires.commands.forEach(cmdName -> commandNames.add(cmdName));
+                commandNames.sort(String.CASE_INSENSITIVE_ORDER);
+
+                buffer.append("\n#ifdef BDGL_IMPL\n");
+
+                // declare per-extension function pointer table
+                int commandCount = apiExt.requires.commands.size();
+                if (commandCount > 0) {
+                    // only write the FP table if we have commands
+                    // (if not, we'll use a null pointer below)
+                    buffer.append("void* (*bdgl_fp_").append(apiExt.name).append("[").append(commandCount).append("])();\n");
+                }
+
+                buffer.append("bdgl_Extension bdgl_").append(apiExt.name).append(" = {\n");
+                buffer.append("  .loaded = 0,\n");
+                buffer.append("  .names = ");
+                if (commandCount > 0) {
+                    for (String commandName : commandNames) {
+                        // e.g. "glGetString\0"
+                        buffer.append('\n').append('"').append(commandName).append("\\0\"");
+                    }
+                    buffer.append(",\n  .funcs = (void**)bdgl_fp_").append(apiExt.name).append(",\n");
+                } else {
+                    // if we don't have any commands, we need an empty 'names' string
+                    // and a null pointer to the function pointers array
+                    buffer.append("\"\"");
+                    buffer.append(",\n  .funcs = 0,\n");
+                }
+                buffer.append("};\n");
+
+                buffer.append("#else\n");
+                buffer.append("extern bdgl_Extension bdgl_").append(apiExt.name).append(";\n");
+                buffer.append("#endif\n");
+
+                for (int commandIndex=0; commandIndex<commandNames.size(); commandIndex++) {
+                    String commandName = commandNames.get(commandIndex);
+
+                    Command command = registry.commands.get(commandName);
+                    if (command == null) {
+                        throw new IllegalStateException("Extension '"+apiExt.name+"' reference non-existent command: " + commandName);
+                    }
+
+                    generateCommand(command, apiExt.name, commandIndex, buffer);
+                }
+            }
+
+            buffer.append( Files.readString(new File("src/bdgl_suffix.h").toPath()) );
+
+            buffer.append("#ifdef BDGL_IMPL\n");
+            buffer.append("int bdgl_load_all(bdgl_loadproc loadproc) {\n");
+            buffer.append("  return 0 \n");
+
+            ApiVersion versionRef = version;
+            while (versionRef != null) {
+
+                buffer.append("    + bdgl_load_version(&bdgl_").append(versionRef.feature.name)
+                    .append(",loadproc)\n");
+
+                versionRef = versionRef.previous;
+            }
+
+            buffer.append(";\n}\n");
+            buffer.append("#endif\n");
         }
-
-        buffer.append(";\n}\n");
-        buffer.append("#endif\n");
     }
 
     public static void dump(Registry registry, Map<Api, List<ApiVersion>> apiVersionMap) {
@@ -960,7 +962,7 @@ public class GLStaxParser {
             System.out.println("//== " + api.name);
 
             for (var version : apiVersions) {
-                generateCHeader(registry, version, buffer);
+                CGen.generateVersion(registry, version, buffer);
             }
             System.out.println(buffer.toString());
         });
@@ -1023,7 +1025,7 @@ public class GLStaxParser {
         }
 
         StringBuilder buffer = new StringBuilder();
-        generateCHeaderImpl(registry, gl33, extensions, buffer);
+        CGen.generateHeader(registry, gl33, extensions, buffer);
         Files.writeString(new File("generated/gl33core.h").toPath(), buffer, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
         // List<ApiVersion> allVersionsCoreProfile = linkApi(gl, "core");
