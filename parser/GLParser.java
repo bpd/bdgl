@@ -270,10 +270,6 @@ public class GLStaxParser {
 
         require.profile = reader.getAttributeValue(null, "profile");
 
-        if (require.profile != null) {
-            System.out.println("profile: " + require.profile);
-        }
-
         while (reader.hasNext()) {
 
             reader.next();
