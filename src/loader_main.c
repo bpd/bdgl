@@ -31,19 +31,10 @@ int init_gl_context() {
     return 0;
 }
 
-//extern void* glXGetProcAddress(char*);
-
-#include <dlfcn.h>
-
 #include <stdlib.h>
 
 
 int main(int argc, char* argv[]) {
-
-    void* handle = dlopen("libGL.so", RTLD_LAZY);
-
-    bdgl_loadproc loadproc;
-    *(void **) (&loadproc) = dlsym(handle, "glXGetProcAddress");
 
     // load functions
     //bdgl_load( (void**)glfp_GL_1_0, glfp_GL_1_0_names, glXGetProcAddress);
@@ -57,7 +48,7 @@ int main(int argc, char* argv[]) {
     //glfp_glGetString glGetString = (glfp_glGetString)glXGetProcAddress("glGetString");
     //glfp_GL_1_0[0] = glXGetProcAddress("glGetString");
 
-    printf("got FP\n");
+    // printf("got FP\n");
 
     // create GL context (needed before we can _call_ the functions)
     if ( init_gl_context() ) {
@@ -71,7 +62,7 @@ int main(int argc, char* argv[]) {
     //     return 7;
     // }
 
-    if ( bdgl_load_all(loadproc) ) {
+    if ( bdgl_load_all((bdgl_loadproc)glfwGetProcAddress) ) {
         printf("error loading GL functions \n");
         return 4;
     }
@@ -131,7 +122,7 @@ int main(int argc, char* argv[]) {
     for (int extIndex=0; extIndex<extCount; extIndex++) {
         const GLubyte* extName = glGetStringi(GL_EXTENSIONS, extIndex);
 
-        //printf("ext: %s \n", extName);
+        printf("ext: %s \n", extName);
 
         int found = bdgl_have_ext((const char*)extName);
         if (found) {
@@ -144,8 +135,6 @@ int main(int argc, char* argv[]) {
 
     printf("not found: %d \n", bdgl_have_ext("ext_does_not_exist"));
 
-
-    dlclose(handle);
 
     return 0;
 }
