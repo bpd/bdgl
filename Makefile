@@ -9,7 +9,7 @@ DEADCODE = -ffunction-sections -Wl,--gc-sections
 # -lGL
 #
 loader:
-	$(CC) -std=c11 -pedantic -Wall -O3 -lglfw -o dist/bdgl-loader src/loader_main.c
+	$(CC) -std=c11 -pedantic -Wall -Wno-unused-function -O3 -lglfw -o dist/bdgl-loader src/loader_main.c
 
 run: loader
 	./dist/bdgl-loader
